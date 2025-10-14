@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: quickbooks-sdk-demo
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+
+quickbooks:
+  client-id: ${QB_CLIENT_ID:YOUR_CLIENT_ID}
+  client-secret: ${QB_CLIENT_SECRET:YOUR_CLIENT_SECRET}
+  environment: ${QB_ENVIRONMENT:production}  # use 'sandbox' for QuickBooks Sandbox
+  redirect-uri: ${QB_REDIRECT_URI:https://your-ngrok-url.ngrok-free.app/callback}
+  base-url: ${QB_BASE_URL:https://quickbooks.api.intuit.com}  # sandbox: https://sandbox-quickbooks.api.intuit.com
+  graphql-url: ${QB_GRAPHQL_URL:https://qb.api.intuit.com/graphql}  # sandbox: https://qb-sandbox.api.intuit.com/graphql
+  minor-version: ${QB_MINOR_VERSION:75}
+  scopes:
+    - com.intuit.quickbooks.accounting
+    - project-management.project
+
+
+logging:
+  level:
+    com.quickbooks.demo: DEBUG

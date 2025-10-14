@@ -1,0 +1,119 @@
+plugins {
+    id 'org.springframework.boot' version '3.2.0'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'java'
+    id 'jacoco'
+}
+
+group = 'com.quickbooks'
+version = '0.1.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.retry:spring-retry:2.0.5'
+    
+    // QuickBooks SDK dependencies - All upgraded to 6.7.0
+    implementation('com.intuit.quickbooks-online:ipp-v3-java-devkit:6.7.0') {
+        exclude group: 'javax.xml.bind', module: 'jaxb-api'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-core'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-impl'
+    }
+    implementation('com.intuit.quickbooks-online:oauth2-platform-api:6.7.0') {
+        exclude group: 'javax.xml.bind', module: 'jaxb-api'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-core'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-impl'
+    }
+    implementation('com.intuit.quickbooks-online:ipp-v3-java-data:6.7.0') {
+        exclude group: 'javax.xml.bind', module: 'jaxb-api'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-core'
+        exclude group: 'com.sun.xml.bind', module: 'jaxb-impl'
+    }
+    
+    // JAXB dependencies for Java 17 compatibility with QuickBooks SDK
+    implementation 'javax.xml.bind:jaxb-api:2.3.1'
+    implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
+    
+    // Jackson for JSON processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    
+    
+    // Test dependencies
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+tasks.named('jacocoTestReport') {
+    dependsOn tasks.test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+    def excludes = [
+        '**/com/quickbooks/demo/service/**',
+        '**/com/quickbooks/demo/controller/**',
+        '**/com/quickbooks/demo/Application.*'
+    ]
+    classDirectories.setFrom(fileTree(dir: 'build/classes/java/main', exclude: excludes))
+}
+
+tasks.named('jacocoTestCoverageVerification') {
+    violationRules {
+        rule {
+            limit {
+                counter = 'INSTRUCTION'
+                value = 'COVEREDRATIO'
+                minimum = 0.85
+            }
+        }
+    }
+    def excludes = [
+        '**/com/quickbooks/demo/service/**',
+        '**/com/quickbooks/demo/controller/**',
+        '**/com/quickbooks/demo/Application.*'
+    ]
+    classDirectories.setFrom(fileTree(dir: 'build/classes/java/main', exclude: excludes))
+}
+
+// Enforce coverage only on CI or when explicitly requested
+if (System.getenv('CI') == 'true' || project.hasProperty('enforceCoverage')) {
+    tasks.named('check') {
+        dependsOn tasks.jacocoTestCoverageVerification
+    }
+} else {
+    tasks.named('jacocoTestCoverageVerification') {
+        enabled = false
+    }
+}
+
+tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('bootJar') {
+    enabled = true
+    archiveClassifier = ''
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

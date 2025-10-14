@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickBooks Projects Demo (Java)</title>
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <link rel="icon" type="image/svg+xml" th:href="@{/images/quickbooks-1.svg}">
+</head>
+
+<body>
+    <div class="container">
+        <!-- Flash messages (top): refresh token success -->
+        <div th:if="${success} and ${'refresh' == successType}" class="flash-messages">
+            <div class="flash-message success" th:attr="data-type=${successType}" th:text="${success}"></div>
+        </div>
+        <!-- Flash messages (top): general success (e.g., OAuth connected, customers fetched, created) -->
+        <div th:if="${success} and ${successType} != 'refresh'" class="flash-messages">
+            <div class="flash-message success" th:text="${success}"></div>
+        </div>
+        <div th:if="${error}" class="flash-messages">
+            <div class="flash-message error" th:text="${error}"></div>
+        </div>
+        <div th:if="${message}" class="flash-messages">
+            <div class="flash-message success" th:text="${message}"></div>
+        </div>
+
+        <!-- Focus target hint from server (e.g., invoice-success, estimate-success, bill-success) -->
+        <div id="focus-target" th:if="${focusTarget}" th:attr="data-target=${focusTarget}" style="display:none;"></div>
+
+        
+
+        <div class="step-container">
+            <h2>QuickBooks Projects Demo (Java)</h2>
+
+            <!-- OAuth Connection -->
+            <div th:unless="${authenticated}" class="step">
+                <h3>Step 1: Connect to QuickBooks</h3>
+                <p>Click the button below to authenticate with QuickBooks using OAuth2</p>
+                <form th:action="@{/qbo-login}" method="GET" onsubmit="this.querySelector('input[type=submit]').disabled=true;">
+                    <input type="submit" name="qbo_connect" value="Connect to QuickBooks" />
+                </form>
+            </div>
+
+            
+
+            
+
+            <!-- Step 2: Get Customers from QuickBooks (always visible) -->
+            <div class="step">
+                <h3>Step 2: Get Customers from QuickBooks</h3>
+                <p>Fetch your customer list from QuickBooks to create projects</p>
+                <form th:action="@{/call-qbo}" method="GET">
+                    <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">Fetch Customers</button>
+                </form>
+                <div class="step-info">
+                    <p th:if="${!(authenticated or (session.authCompleted == true))}" class="pre-req">Please complete Step 1 first</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Create Project (always visible) -->
+            <div class="step">
+                <h3>Step 3: Create Project</h3>
+                <p>Select a customer and create a project for them</p>
+                <form th:action="@{/create-project}" method="POST">
+                    <div class="form-group">
+                        <select name="customerName" id="customer-select" required th:disabled="${session.customer_map == null || session.customer_map.isEmpty()}">
+                            <option value="">-- Select a customer --</option>
+                            <option th:each="customer : ${session.customer_map}" 
+                                    th:value="${customer.value}"
+                                    th:text="${customer.value + ' (ID: ' + customer.key + ')'}">
+                            </option>
+                        </select>
+                        <!-- Use customerName for both fields - controller can look up ID from session -->
+                        <input type="hidden" name="customerId" value="temp-id">
+                    </div>
+                    <div class="form-group">
+                        <label>Project Name (optional)</label>
+                        <input type="text" name="projectName" placeholder="Enter a project name or leave blank for auto-generated" />
+                    </div>
+                    <button type="submit" class="action-btn" th:disabled="${customers == null || customers.isEmpty()}">Create Project</button>
+                </form>
+                <div class="step-info">
+                    <p th:if="${session.customer_map == null || session.customer_map.isEmpty()}" class="pre-req">Please complete Step 2 first</p>
+                </div>
+
+                <!-- Optional: Create Customer/Item (inline forms) -->
+                <div class="button-group" style="margin-top:12px;" th:if="${allowWrites}">
+                    <button type="button" class="action-btn customer" th:disabled="${!(authenticated)}" onclick="toggleInline('inline_customer_form')">Create Customer…</button>
+                    <button type="button" class="action-btn item" th:disabled="${!(authenticated)}" onclick="toggleInline('inline_item_form')">Create Item…</button>
+                </div>
+
+                <!-- Inline Customer Form -->
+                <div id="inline_customer_form" class="step" style="display:none; margin-top:12px;" th:if="${allowWrites}">
+                    <h3 style="text-align:center; margin-top:0;">Create Customer</h3>
+                    <form method="POST" th:action="@{/create-customer}">
+                        <div class="form-group">
+                            <label>Display Name</label>
+                            <input type="text" id="inline_cust_display" name="displayName" placeholder="Unique display name" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Email (optional)</label>
+                            <input type="email" id="inline_cust_email" name="email" placeholder="name@example.com" />
+                        </div>
+                        <div class="form-group">
+                            <label>Phone (optional)</label>
+                            <input type="text" id="inline_cust_phone" name="phone" placeholder="(555) 123-4567" />
+                        </div>
+                        <div class="button-group">
+                            <button type="button" class="action-btn customer" onclick="randomFillInlineCustomer()">Randomize</button>
+                            <button type="submit" class="action-btn">Create</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Inline Item Form -->
+                <div id="inline_item_form" class="step" style="display:none; margin-top:12px;" th:if="${allowWrites}">
+                    <h3 style="text-align:center; margin-top:0;">Create Item</h3>
+                    <form method="POST" th:action="@{/create-item}">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="inline_item_name" name="name" placeholder="Item name" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Unit Price</label>
+                            <input type="number" step="0.01" id="inline_item_price" name="unitPrice" placeholder="0.00" required />
+                        </div>
+                        <div class="button-group">
+                            <button type="button" class="action-btn item" onclick="randomFillInlineItem()">Randomize</button>
+                            <button type="submit" class="action-btn">Create</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Step 3: Delete Project (CRUD) -->
+            <div class="step">
+                <h3>Delete Project</h3>
+                <p>Soft-delete a project by ID (and optional version).</p>
+                <form th:action="@{/delete-project}" method="POST">
+                    <div class="form-group">
+                        <label>Project ID</label>
+                        <input type="text" name="id" placeholder="Enter project id" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Version (optional)</label>
+                        <input type="number" name="version" min="0" placeholder="If known" />
+                    </div>
+                    <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">Delete Project</button>
+                </form>
+                <div th:if="${session.projectDeleteResult != null}" class="invoice-details" id="project-delete-success" style="margin-top:12px;">
+                    <h3>✅ Project Deleted</h3>
+                    <div class="invoice-info">
+                        <p><strong>ID:</strong> <span th:text="${session.projectDeleteResult.id}"></span></p>
+                        <p th:if="${session.projectDeleteResult.name}"><strong>Name:</strong> <span th:text="${session.projectDeleteResult.name}"></span></p>
+                        <p><strong>Deleted:</strong> <span th:text="${session.projectDeleteResult.deleted}"></span></p>
+                    </div>
+                </div>
+                <div th:if="${session.projectDeleteError != null}" class="flash-messages" style="margin-top:12px;">
+                    <div class="flash-message error" th:text="${session.projectDeleteError}"></div>
+                </div>
+                <hr style="margin:16px 0;">
+                <h4>Delete Multiple Projects</h4>
+                <form th:action="@{/delete-projects-multi}" method="POST" style="margin-top:8px;">
+                    <div class="form-group">
+                        <label>Project IDs (comma-separated)</label>
+                        <input type="text" name="ids" placeholder="e.g., 668505571, 668505401" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Version (optional)</label>
+                        <input type="number" name="version" min="0" placeholder="If same for all" />
+                    </div>
+                    <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">Delete Multiple</button>
+                </form>
+                <div th:if="${session.projectDeleteMultiResults != null}" id="project-delete-multi-results" style="margin-top:12px;">
+                    <div class="flash-messages" style="margin-bottom:8px;">
+                        <div class="flash-message success">✅ Bulk Delete Results</div>
+                    </div>
+                    <div class="scroll-x">
+                        <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:160px;">Project ID</th>
+                                    <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:140px;">Status</th>
+                                    <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Name</th>
+                                    <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Deleted</th>
+                                    <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Error</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="r : ${session.projectDeleteMultiResults}">
+                                    <td style="padding:6px; word-break:break-all;" th:text="${r['id']}"></td>
+                                    <td style="padding:6px;" th:text="${r['status']}"></td>
+                                    <td style="padding:6px; word-break:break-word;" th:text="${r['name']}"></td>
+                                    <td style="padding:6px;" th:text="${r['deleted']}"></td>
+                                    <td style="padding:6px; word-break:break-word;" th:text="${r['error']}"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project-created details just above Step 4 -->
+            <div th:if="${project != null and session.projectSource == 'created'}" id="project-created-section" class="project-details">
+                <h3>✅ Project Created Successfully!</h3>
+                <div class="project-info">
+                    <p><strong>Project ID:</strong> <span th:text="${project['id']}"></span></p>
+                    <p><strong>Name:</strong> <span th:text="${project['name']}"></span></p>
+                    <p><strong>Description:</strong> <span th:text="${project['description']}"></span></p>
+                    <p><strong>Status:</strong> <span th:text="${project['status']}"></span></p>
+                    <p><strong>Start Date:</strong> <span th:text="${project['startDate']}"></span></p>
+                    <p><strong>Due Date:</strong> <span th:text="${project['dueDate']}"></span></p>
+                </div>
+            </div>
+
+            <!-- Step 4: Projects — List -->
+            <div class="step">
+                <h3>Step 4: Projects — List</h3>
+                <div class="form-row" style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <form th:action="@{/projects}" method="POST" style="flex:1; min-width:280px;">
+                        <div class="form-group">
+                            <label>Page size (first)</label>
+                            <input type="number" name="first" min="1" value="10" />
+                        </div>
+                        <div class="form-group">
+                            <label>After cursor (optional)</label>
+                            <input type="text" name="after" placeholder="endCursor from previous page" />
+                        </div>
+                        <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">List Projects</button>
+                    </form>
+                </div>
+                <div th:if="${session.projects != null}" id="projects-results" style="margin-top:12px;">
+                    <h4>Projects</h4>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">ID</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Name</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Status</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Start</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Due</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px;">Customer</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="p : ${session.projects.nodes}">
+                                <td style="padding:6px;" th:text="${p.id}"></td>
+                                <td style="padding:6px;" th:text="${p.name}"></td>
+                                <td style="padding:6px;" th:text="${p.status}"></td>
+                                <td style="padding:6px;" th:text="${p.startDate}"></td>
+                                <td style="padding:6px;" th:text="${p.dueDate}"></td>
+                                <td style="padding:6px;" th:text="${p.customer != null ? p.customer.id : ''}"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div th:if="${session.projects.pageInfo != null}" style="margin-top:8px;">
+                        <p>
+                            <strong>Has Next:</strong> <span th:text="${session.projects.pageInfo.hasNextPage}"></span>
+                            <strong style="margin-left:12px;">End Cursor:</strong> <span th:text="${session.projects.pageInfo.endCursor}"></span>
+                        </p>
+                    </div>
+                </div>
+                <div th:if="${session.projects_error != null}" id="projects-error" class="flash-messages" style="margin-top:12px;">
+                    <div class="flash-message error" th:text="${session.projects_error}"></div>
+                </div>
+            </div>
+
+
+            
+
+            <!-- Step 5: Project — Query by ID -->
+            <div class="step">
+                <h3>Step 5: Project — Query by ID</h3>
+                <form th:action="@{/projects/get}" method="POST" style="flex:1; min-width:280px;">
+                    <div class="form-group">
+                        <label>Project ID</label>
+                        <input type="text" name="id" placeholder="Enter project id" required />
+                    </div>
+                    <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">Get Project</button>
+                </form>
+                <div class="step-info" style="margin-top:8px;">
+                    <p><em>Tip:</em> You can query multiple IDs via the form below (comma-separated), or in GraphQL using aliases (p1, p2…).</p>
+                </div>
+
+                <!-- Multi ID form -->
+                <form th:action="@{/projects/get-multi}" method="POST" style="flex:1; min-width:280px; margin-top:8px;">
+                    <div class="form-group">
+                        <label>Project IDs (comma-separated)</label>
+                        <input type="text" name="ids" placeholder="e.g., 669008853, 669250541, 668917331" />
+                    </div>
+                    <button type="submit" class="action-btn" th:disabled="${!(authenticated or (session.authCompleted == true))}">Get Multiple Projects</button>
+                </form>
+
+                <div th:if="${session.projects_multi != null}" id="projects-multi-results" style="margin-top:12px;">
+                    <div class="flash-messages" style="margin-bottom:8px;">
+                        <div class="flash-message success">✅ Projects (Multiple)</div>
+                    </div>
+                    <div class="scroll-x">
+                    <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:120px;">ID</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:200px;">Name</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:90px;">Status</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:160px;">Start</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:160px;">Due</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:90px;">Customer</th>
+                                <th style="text-align:left; border-bottom:1px solid #ddd; padding:6px; width:200px;">Account</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr th:each="p : ${session.projects_multi}">
+                                <td style="padding:6px; word-break:break-all;" th:text="${p.id}"></td>
+                                <td style="padding:6px; word-break:break-word;" th:text="${p.name}"></td>
+                                <td style="padding:6px;" th:text="${p.status}"></td>
+                                <td style="padding:6px;" th:text="${p.startDate}"></td>
+                                <td style="padding:6px;" th:text="${p.dueDate}"></td>
+                                <td style="padding:6px;" th:text="${p.customer != null ? p.customer.id : ''}"></td>
+                                <td style="padding:6px; word-break:break-all;" th:text="${p.accountId}"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+                <div th:if="${project != null and session.projectSource == 'read'}" id="project-read-section" class="project-details" style="margin-top:12px;">
+                    <h3 style="margin-top:0;">✅ Project Loaded</h3>
+                    <div class="project-info">
+                        <p><strong>Name:</strong> <span th:text="${project['name']}"></span></p>
+                        <p><strong>Status:</strong> <span th:text="${project['status']}"></span></p>
+                        <p><strong>Description:</strong> <span th:text="${project['description']}"></span></p>
+                        <p><strong>Start Date:</strong> <span th:text="${project['startDate']}"></span></p>
+                        <p><strong>Due Date:</strong> <span th:text="${project['dueDate']}"></span></p>
+                        <p><strong>Account ID:</strong> <span th:text="${project['accountId']}"></span></p>
+                        <p><strong>Customer ID:</strong> <span th:text="${project['customer'] != null ? project['customer']['id'] : ''}"></span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 6: Create Invoice for Project (always visible) -->
+            <div class="step">
+                <h3>Step 6: Create Invoice for Project</h3>
+                <p>Create an invoice linked to your project (items automatically loaded with customers)</p>
+                
+                <!-- Invoice Creation Form (always visible but disabled until project exists) -->
+                <div class="invoice-form">
+                    <form th:action="@{/create-invoice}" method="POST">
+                        <div class="form-group">
+                            <label for="customer-invoice-select">Customer:</label>
+                            <select name="customerId" id="customer-invoice-select" required th:disabled="${project == null or project.isEmpty()}">
+                                <option value="">-- Select a customer --</option>
+                                <option th:each="customer : ${session.customer_map}" 
+                                        th:value="${customer.key}" 
+                                        th:text="${customer.value + ' (ID: ' + customer.key + ')'}">
+                                </option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="item-select">Item:</label>
+                            <select name="itemId" id="item-select" required th:disabled="${project == null or project.isEmpty()}"
+                                    onchange="document.getElementById('item-name').value = this.options[this.selectedIndex].text;">
+                                <option value="">-- Select an item --</option>
+                                <option th:each="item : ${session.items}" 
+                                        th:value="${item.id}" 
+                                        th:text="${item.name + ' (ID: ' + item.id + ')'}">
+                                </option>
+                            </select>
+                            <input type="hidden" id="item-name" name="itemName" value="">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="quantity">Quantity:</label>
+                            <input type="number" name="quantity" id="quantity" required min="1" value="1" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="amount">Unit Price ($):</label>
+                            <input type="number" step="0.01" name="amount" id="amount" required min="0.01" placeholder="Price per item" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="description">Description (optional):</label>
+                            <input type="text" name="description" id="description" placeholder="Invoice description" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        
+                        <!-- Hidden project ID, prefer resolved accounting project id (Customer.IsProject) for ProjectRef -->
+                        <input type="hidden" name="projectId" th:value="${project != null ? (project['accountingProjectId'] != null ? project['accountingProjectId'] : project['id']) : ''}">
+                        
+                        <button type="submit" class="action-btn" style="background: linear-gradient(135deg, #2E7D32, #43A047);" th:disabled="${project == null or project.isEmpty()}">
+                            Create Invoice
+                        </button>
+                    </form>
+                    
+                    <div th:unless="${project}" class="step-info">
+                        <p><em>Please complete Step 3 first</em></p>
+                    </div>
+                </div>
+                
+                <!-- Step 6: Invoice Status (show when invoice is created) -->
+                <div th:if="${session.invoiceId}" class="invoice-details" id="invoice-success">
+                    <h3>✅ Invoice Created Successfully!</h3>
+                    <div class="invoice-info">
+                        <p><strong>Invoice ID:</strong> <span th:text="${session.invoiceId}"></span></p>
+                        <p th:if="${session.invoiceNumber}"><strong>Invoice Number:</strong> <span th:text="${session.invoiceNumber}"></span></p>
+                        <p><strong>Linked to Project ID:</strong> <span th:text="${session.invoiceProjectId}"></span></p>
+                        <p><strong>Amount:</strong> $<span th:text="${#numbers.formatDecimal(session.invoiceAmount, 1, 2)}"></span></p>
+                        <div class="deep-link-section">
+                            <a th:href="${session.invoiceDeepLink}" target="_blank" class="deep-link-btn">
+                                🔗 View Invoice in QuickBooks
+                            </a>
+                            <p class="deep-link-info">Click the link above to view your invoice directly in QuickBooks Online</p>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+
+            <!-- Step 7: Create Estimate for Project -->
+            <div class="step">
+                <h3>Step 7: Create Estimate for Project</h3>
+                <p>Create an estimate linked to your project (Accounting REST API with ProjectRef).</p>
+                <div class="invoice-form">
+                    <form th:action="@{/create-estimate}" method="POST">
+                        <div class="form-group">
+                            <label>Customer:</label>
+                            <select name="customerId" required th:disabled="${project == null or project.isEmpty()}">
+                                <option value="">-- Select a customer --</option>
+                                <option th:each="customer : ${session.customer_map}"
+                                        th:value="${customer.key}"
+                                        th:text="${customer.value + ' (ID: ' + customer.key + ')'}">
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Item:</label>
+                            <select name="itemId" required th:disabled="${project == null or project.isEmpty()}">
+                                <option value="">-- Select an item --</option>
+                                <option th:each="item : ${session.items}"
+                                        th:value="${item.id}"
+                                        th:text="${item.name + ' (ID: ' + item.id + ')'}">
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Quantity:</label>
+                            <input type="number" name="quantity" required min="1" value="1" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        <div class="form-group">
+                            <label>Unit Price ($):</label>
+                            <input type="number" step="0.01" name="amount" required min="0.01" placeholder="Price per item" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        <div class="form-group">
+                            <label>Description (optional):</label>
+                            <input type="text" name="description" placeholder="Estimate description" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        <input type="hidden" name="projectId" th:value="${project != null ? project['id'] : ''}">
+                        <button type="submit" class="action-btn" th:disabled="${project == null or project.isEmpty()}">Create Estimate</button>
+                    </form>
+                    <div th:unless="${project}" class="step-info">
+                        <p><em>Please complete Step 3 first</em></p>
+                    </div>
+                </div>
+                <!-- Step 7: Estimate Status (show when estimate is created) -->
+                <div th:if="${session.estimateId}" class="invoice-details" id="estimate-success">
+                    <h3>✅ Estimate Created Successfully!</h3>
+                    <div class="invoice-info">
+                        <p><strong>Estimate ID:</strong> <span th:text="${session.estimateId}"></span></p>
+                        <p th:if="${session.estimateDocNumber}"><strong>Estimate Number:</strong> <span th:text="${session.estimateDocNumber}"></span></p>
+                        <p><strong>Linked to Project ID:</strong> <span th:text="${session.estimateProjectId}"></span></p>
+                        <p><strong>Amount:</strong> $<span th:text="${#numbers.formatDecimal(session.estimateAmount, 1, 2)}"></span></p>
+                        <div class="deep-link-section">
+                            <a th:href="${'https://app.qbo.intuit.com/app/estimate?txnId=' + session.estimateId + '&companyId=' + session.realmId}" target="_blank" class="deep-link-btn">
+                                🔗 View Estimate in QuickBooks
+                            </a>
+                            <p class="deep-link-info">Opens estimate in a new tab</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 8: Create Bill for Project -->
+            <div class="step">
+                <h3>Step 8: Create Bill for Project</h3>
+                <p>Create a vendor bill linked to your project (Accounting REST API with ProjectRef).</p>
+                <div class="invoice-form">
+                    <form th:action="@{/create-bill}" method="POST">
+                        <div class="form-group">
+                            <label>Vendor:</label>
+                            <select name="vendorId" required th:disabled="${project == null or project.isEmpty()}">
+                                <option value="">-- Select a vendor --</option>
+                                <option th:each="v : ${session.vendors}"
+                                        th:value="${v.id}"
+                                        th:text="${v.name + ' (ID: ' + v.id + ')'}">
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Expense Account:</label>
+                            <select name="expenseAccountId" required th:disabled="${project == null or project.isEmpty()}">
+                                <option value="">-- Select an account --</option>
+                                <option th:each="a : ${session.expenseAccounts}"
+                                        th:value="${a.id}"
+                                        th:text="${a.name + ' (ID: ' + a.id + ', ' + a.type + ')'}">
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Amount ($):</label>
+                            <input type="number" step="0.01" name="amount" placeholder="0.00" required th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        <div class="form-group">
+                            <label>Description (optional):</label>
+                            <input type="text" name="description" placeholder="Bill description" th:disabled="${project == null or project.isEmpty()}">
+                        </div>
+                        <input type="hidden" name="projectId" th:value="${project != null ? project['id'] : ''}">
+                        <button type="submit" class="action-btn" th:disabled="${project == null or project.isEmpty()}">Create Bill</button>
+                    </form>
+                    <div th:unless="${project}" class="step-info">
+                        <p><em>Please complete Step 3 first</em></p>
+                    </div>
+                </div>
+                <!-- Step 8: Bill Status (show when bill is created) -->
+                <div th:if="${session.billId}" class="invoice-details" id="bill-success">
+                    <h3>✅ Bill Created Successfully!</h3>
+                    <div class="invoice-info">
+                        <p><strong>Bill ID:</strong> <span th:text="${session.billId}"></span></p>
+                        <p><strong>Linked to Project ID:</strong> <span th:text="${session.billProjectId}"></span></p>
+                        <p><strong>Amount:</strong> $<span th:text="${#numbers.formatDecimal(session.billAmount, 1, 2)}"></span></p>
+                        <div class="deep-link-section">
+                            <a th:href="${session.billDeepLink}" target="_blank" class="deep-link-btn">🔗 View Bill in QuickBooks</a>
+                            <p class="deep-link-info">Opens bill in a new tab</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        <!-- Step 9: Create Sales Receipt for Project -->
+        <div class="step">
+            <h3>Step 9: Create Sales Receipt for Project</h3>
+            <p>Create a sales receipt linked to your project (Accounting REST API with ProjectRef on line).</p>
+            <div class="invoice-form">
+                <form th:action="@{/create-sales-receipt}" method="POST">
+                    <div class="form-group">
+                        <label>Customer:</label>
+                        <select name="customerId" required th:disabled="${project == null or project.isEmpty()}">
+                            <option value="">-- Select a customer --</option>
+                            <option th:each="customer : ${session.customer_map}"
+                                    th:value="${customer.key}"
+                                    th:text="${customer.value}">
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Item:</label>
+                        <select name="itemId" required th:disabled="${project == null or project.isEmpty()}">
+                            <option value="">-- Select an item --</option>
+                            <option th:each="item : ${session.items}"
+                                    th:value="${item.id}"
+                                    th:text="${item.name}">
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity:</label>
+                        <input type="number" name="quantity" required min="1" value="1" th:disabled="${project == null or project.isEmpty()}">
+                    </div>
+                    <div class="form-group">
+                        <label>Unit Price ($):</label>
+                        <input type="number" step="0.01" name="amount" required min="0.01" placeholder="0.00" th:disabled="${project == null or project.isEmpty()}">
+                    </div>
+                    <div class="form-group">
+                        <label>Description (optional):</label>
+                        <input type="text" name="description" placeholder="Sales receipt description" th:disabled="${project == null or project.isEmpty()}">
+                    </div>
+                    <input type="hidden" name="projectId" th:value="${project != null ? (project['accountingProjectId'] != null ? project['accountingProjectId'] : project['id']) : ''}">
+                    <button type="submit" class="action-btn" th:disabled="${project == null or project.isEmpty()}">Create Sales Receipt</button>
+                </form>
+                <div th:unless="${project}" class="step-info">
+                    <p><em>Please complete Step 3 first</em></p>
+                </div>
+            </div>
+            <div th:if="${session.salesReceiptId}" class="invoice-details" id="sales-receipt-success">
+                <h3>✅ Sales Receipt Created Successfully!</h3>
+                <div class="invoice-info">
+                    <p><strong>Sales Receipt ID:</strong> <span th:text="${session.salesReceiptId}"></span></p>
+                    <p><strong>Linked to Project ID:</strong> <span th:text="${session.salesReceiptProjectId}"></span></p>
+                    <p><strong>Amount:</strong> $<span th:text="${#numbers.formatDecimal(session.salesReceiptAmount, 1, 2)}"></span></p>
+                    <div class="deep-link-section">
+                        <a th:href="${session.salesReceiptDeepLink}" target="_blank" class="deep-link-btn">🔗 View Sales Receipt in QuickBooks</a>
+                        <p class="deep-link-info">Opens sales receipt in a new tab</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+            
+
+
+
+            
+            <!-- Bottom actions: Refresh Token, then Disconnect (only when authenticated) -->
+            <div th:if="${authenticated}" class="step">
+                <form th:action="@{/refresh-token}" method="POST" style="display:inline-block; margin-right: 12px;">
+                    <button type="submit" class="action-btn refresh-btn">Refresh Token</button>
+                </form>
+                <form th:action="@{/logout}" method="GET">
+                    <button type="submit" class="action-btn logout-btn">Disconnect from QuickBooks</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    
+
+    <script>
+        // Auto-focus priority:
+        // 1) Explicit focus target from server (focusTarget)
+        // 2) Refresh alert
+        // 3) Project-created
+        // 4) Project-read (Step 5)
+        // 5) Projects results/error
+        // 6) Invoice success
+        // 7) Estimate success
+        // 8) Bill success
+        // 9) Any general success
+        document.addEventListener('DOMContentLoaded', function() {
+            const focusHolder = document.getElementById('focus-target');
+            const focusId = focusHolder ? focusHolder.getAttribute('data-target') : null;
+            const invoiceSuccess = document.getElementById('invoice-success');
+            const estimateSuccess = document.getElementById('estimate-success');
+            const billSuccess = document.getElementById('bill-success');
+            const salesReceiptSuccess = document.getElementById('sales-receipt-success');
+            const projectCreatedSection = document.getElementById('project-created-section');
+            const projectDeleteSuccess = document.getElementById('project-delete-success');
+            const projectDeleteMultiResults = document.getElementById('project-delete-multi-results');
+            const projectReadSection = document.getElementById('project-read-section');
+            const projectsResults = document.getElementById('projects-results') || document.getElementById('projects-error');
+            const successAlert = document.querySelector('.flash-messages .success');
+            const refreshAlert = document.querySelector('.flash-messages .success[data-type="refresh"]');
+            if (focusId) {
+                const target = document.getElementById(focusId);
+                if (target) {
+                    target.setAttribute('tabindex', '-1');
+                    target.focus({ preventScroll: true });
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    target.style.transition = 'box-shadow 0.5s ease-in-out';
+                    target.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.35)';
+                    setTimeout(function() { target.style.boxShadow = 'none'; }, 3000);
+                    return;
+                }
+            }
+            if (refreshAlert) {
+                // Highest priority: focus refresh token success
+                refreshAlert.setAttribute('tabindex', '-1');
+                refreshAlert.focus({ preventScroll: true });
+                refreshAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (projectCreatedSection) {
+                projectCreatedSection.setAttribute('tabindex', '-1');
+                projectCreatedSection.focus({ preventScroll: true });
+                projectCreatedSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (projectReadSection) {
+                projectReadSection.setAttribute('tabindex', '-1');
+                projectReadSection.focus({ preventScroll: true });
+                projectReadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (projectsResults) {
+                projectsResults.setAttribute('tabindex', '-1');
+                projectsResults.focus({ preventScroll: true });
+                projectsResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (projectDeleteSuccess) {
+                projectDeleteSuccess.setAttribute('tabindex', '-1');
+                projectDeleteSuccess.focus({ preventScroll: true });
+                projectDeleteSuccess.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (projectDeleteMultiResults) {
+                projectDeleteMultiResults.setAttribute('tabindex', '-1');
+                projectDeleteMultiResults.focus({ preventScroll: true });
+                projectDeleteMultiResults.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (invoiceSuccess) {
+                // Next priority: invoice section when present
+                invoiceSuccess.setAttribute('tabindex', '-1');
+                invoiceSuccess.focus({ preventScroll: true });
+                invoiceSuccess.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                invoiceSuccess.style.transition = 'box-shadow 0.5s ease-in-out';
+                invoiceSuccess.style.boxShadow = '0 0 20px rgba(76, 175, 80, 0.3)';
+                setTimeout(function() { invoiceSuccess.style.boxShadow = 'none'; }, 3000);
+            } else if (estimateSuccess) {
+                estimateSuccess.setAttribute('tabindex', '-1');
+                estimateSuccess.focus({ preventScroll: true });
+                estimateSuccess.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (billSuccess) {
+                billSuccess.setAttribute('tabindex', '-1');
+                billSuccess.focus({ preventScroll: true });
+                billSuccess.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (salesReceiptSuccess) {
+                salesReceiptSuccess.setAttribute('tabindex', '-1');
+                salesReceiptSuccess.focus({ preventScroll: true });
+                salesReceiptSuccess.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (successAlert) {
+                // Otherwise, focus any general success alert
+                successAlert.setAttribute('tabindex', '-1');
+                successAlert.focus({ preventScroll: true });
+                successAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+
+        // Toggle inline create forms and center on screen
+        window.toggleInline = function(id){
+            const el = document.getElementById(id);
+            if (!el) return;
+            const show = el.style.display === 'none' || !el.style.display;
+            el.style.display = show ? 'block' : 'none';
+            if (show) {
+                el.scrollIntoView({ behavior:'smooth', block:'center' });
+            }
+        };
+
+        // Random helpers for inline forms
+        function randInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+        function randPhone(){ const a=randInt(200,999), b=randInt(200,999), c=randInt(1000,9999); return `(${a}) ${b}-${c}`; }
+        const FIRST_NAMES = ['Avery','Jordan','Riley','Taylor','Alex','Casey','Drew','Elliot','Harper','Quinn','Rowan','Skyler'];
+        const LAST_NAMES = ['Lee','Brooks','Morgan','Hayes','Parker','Reed','Cruz','Diaz','Nguyen','Singh','Kim','Khan'];
+        const BUSINESSES = ['Consulting','Design','Repair','Groceries','Landscaping','Coffee','Hardware','Studios','Logistics','Services'];
+        window.randomFillInlineCustomer = function(){
+            const f = FIRST_NAMES[randInt(0,FIRST_NAMES.length-1)];
+            const l = LAST_NAMES[randInt(0,LAST_NAMES.length-1)];
+            const bz = BUSINESSES[randInt(0,BUSINESSES.length-1)];
+            const ts = Date.now().toString().slice(-6);
+            const display = Math.random()<0.5 ? `${f} ${l}` : `${l}'s ${bz}`;
+            const email = `${f}.${l}.${ts}`.toLowerCase().replace(/[^a-z0-9.]/g,'') + '@example.com';
+            const dn = document.getElementById('inline_cust_display');
+            const em = document.getElementById('inline_cust_email');
+            const ph = document.getElementById('inline_cust_phone');
+            if (dn) dn.value = display + ' ' + ts;
+            if (em) em.value = email;
+            if (ph) ph.value = randPhone();
+        };
+
+        const ITEM_BASES = ['Consulting','Installation','Maintenance','Training','Support','Setup','Audit','Integration'];
+        window.randomFillInlineItem = function(){
+            const name = ITEM_BASES[randInt(0, ITEM_BASES.length-1)] + ' ' + randInt(1,9999);
+            const price = (Math.random()<0.5? randInt(50,500)+0.99 : randInt(10,150)+0.00).toFixed(2);
+            const nm = document.getElementById('inline_item_name');
+            const pr = document.getElementById('inline_item_price');
+            if (nm) nm.value = name;
+            if (pr) pr.value = price;
+        };
+
+        // Popup helpers for customer/item create
+        function openPopupFromTemplate(tid, width, height){
+            const tpl = document.getElementById(tid);
+            if (!tpl) return;
+            const ww = width || 560, hh = height || 600;
+            const left = Math.max(0, (window.screen.availWidth - ww) / 2);
+            const top = Math.max(0, (window.screen.availHeight - hh) / 2);
+            const w = window.open('', '_blank', `width=${ww},height=${hh},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+            if (!w) return;
+            w.document.open();
+            w.document.write(tpl.innerHTML);
+            w.document.close();
+        }
+        window.openCustomerPopup = function(){ openPopupFromTemplate('customer-popup-template', 560, 620); };
+        window.openItemPopup = function(){ openPopupFromTemplate('item-popup-template', 560, 520); };
+
+        
+    </script>
+</body>
+
+</html>
