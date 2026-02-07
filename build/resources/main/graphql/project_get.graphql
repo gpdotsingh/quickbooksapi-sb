@@ -1,0 +1,13 @@
+query GetProjectById($id: ID!) {
+  projectManagementProject(id: $id) {
+    name
+    status
+    description
+    startDate
+    dueDate
+    account { id }
+    customer { id }
+  }
+}
+
+

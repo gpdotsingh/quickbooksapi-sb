@@ -27,8 +27,6 @@ import org.springframework.web.client.RestTemplate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intuit.ipp.core.Context;
-import com.intuit.ipp.core.ServiceType;
 import com.intuit.ipp.data.Account;
 import com.intuit.ipp.data.Customer;
 import com.intuit.ipp.data.Invoice;
@@ -40,10 +38,12 @@ import com.intuit.ipp.data.ReferenceType;
 import com.intuit.ipp.data.SalesItemLineDetail;
 import com.intuit.ipp.data.Vendor;
 import com.intuit.ipp.exception.FMSException;
-import com.intuit.ipp.security.OAuth2Authorizer;
 import com.intuit.ipp.services.DataService;
 import com.intuit.ipp.services.QueryResult;
 import com.quickbooks.demo.config.QuickBooksConfig;
+import com.quickbooks.demo.model.QuickBooksContext;
+import com.quickbooks.demo.service.client.QuickBooksRestClient;
+import com.quickbooks.demo.service.client.QuickBooksSdkClient;
 
 
 @Service
@@ -57,12 +57,19 @@ public class QuickBooksApiService {
     @Autowired
     private RestTemplate restTemplate; // For GraphQL calls
     
+    @Autowired
+    private QuickBooksRestClient restClient;
+    
+    @Autowired
+    private QuickBooksSdkClient sdkClient;
+    
     private String ensureNoTrailingSlash(String url) {
         if (url == null) {
             return "";
         }
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
+
     
     private ResponseEntity<String> exchangeWithRetry(String url, HttpMethod method, HttpEntity<?> entity) {
         RetryTemplate retry = RetryTemplate.builder()
@@ -84,6 +91,10 @@ public class QuickBooksApiService {
             return response;
         });
     }
+
+    private QuickBooksContext ctx(String accessToken, String realmId) {
+        return QuickBooksContext.of(accessToken, realmId);
+    }
     
     /**
      * Get customers from QuickBooks
@@ -99,70 +110,82 @@ public class QuickBooksApiService {
         }
         
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? 
-                accessToken.substring(7) : accessToken;
-            
-            String apiUrl = ensureNoTrailingSlash(config.getBaseUrl()) + "/v3/company/" + realmId + "/query";
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                apiUrl = apiUrl + "?minorversion=" + config.getMinorVersion().trim();
-            }
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + rawToken);
-            headers.set("Accept", "application/json");
-            headers.set("Content-Type", "application/text"); 
-            
+            // Query via REST with a minimal, parser-safe SELECT (mirror working project)
+            // Avoid MAXRESULTS clause which some QBO tenants reject without STARTPOSITION
             String query = "Select * from Customer where Job = false";
-            HttpEntity<String> request = new HttpEntity<>(query, headers);
-            
-            ResponseEntity<String> response = exchangeWithRetry(apiUrl, HttpMethod.POST, request);
-            
-            if (response.getStatusCode().is2xxSuccessful()) {
-                JsonNode responseData = objectMapper.readTree(response.getBody());
-                JsonNode queryResponse = responseData.get("QueryResponse");
-                
-                if (queryResponse != null && queryResponse.has("Customer")) {
-                    JsonNode customersNode = queryResponse.get("Customer");
-                    
-                    List<String> customerNames = new ArrayList<>();
-                    Map<String, String> customerMap = new HashMap<>();
-                    List<Map<String, Object>> customers = new ArrayList<>();
-                    
-                    for (JsonNode customerNode : customersNode) {
-                        String name = customerNode.has("DisplayName") ? 
-                            customerNode.get("DisplayName").asText() : 
-                            customerNode.get("FullyQualifiedName").asText();
-                        String id = customerNode.get("Id").asText();
-                        
-                        customerNames.add(name);
-                        customerMap.put(id, name);
-                        
-                        Map<String, Object> customer = new HashMap<>();
-                        customer.put("id", id);
-                        customer.put("name", name);
-                        customers.add(customer);
-                    }
-                    
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("customers", customers);
-                    result.put("customerNames", customerNames);
-                    result.put("customerMap", customerMap);
-                    
-                    return result;
-                } else {
-                    // No customers found - return empty result
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("customers", new ArrayList<>());
-                    result.put("customerNames", new ArrayList<>());
-                    result.put("customerMap", new HashMap<>());
-                    return result;
+            String body = restClient.query(ctx(accessToken, realmId), query);
+            JsonNode responseData = objectMapper.readTree(body);
+            JsonNode queryResponse = responseData.get("QueryResponse");
+
+            List<String> customerNames = new ArrayList<>();
+            Map<String, String> customerMap = new HashMap<>();
+            List<Map<String, Object>> customers = new ArrayList<>();
+
+            if (queryResponse != null && queryResponse.has("Customer")) {
+                JsonNode customersNode = queryResponse.get("Customer");
+                for (JsonNode customerNode : customersNode) {
+                    String id = customerNode.path("Id").asText();
+                    String name = customerNode.has("DisplayName")
+                        ? customerNode.get("DisplayName").asText()
+                        : customerNode.path("FullyQualifiedName").asText("");
+                    customerNames.add(name);
+                    customerMap.put(id, name);
+                    Map<String, Object> customer = new HashMap<>();
+                    customer.put("id", id);
+                    customer.put("name", name);
+                    customers.add(customer);
                 }
             }
-            
-            throw new RuntimeException("Failed to get customers: " + response.getBody());
-            
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("customers", customers);
+            result.put("customerNames", customerNames);
+            result.put("customerMap", customerMap);
+            return result;
+
         } catch (IOException | RuntimeException e) {
             throw new RuntimeException("Failed to get customers: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get all accounts (sample fields) via Accounting REST API query endpoint.
+     */
+    public Map<String, Object> getAccounts(String accessToken, String realmId) {
+        if (accessToken == null || accessToken.trim().isEmpty()) {
+            throw new RuntimeException("Access token is required");
+        }
+        if (realmId == null || realmId.trim().isEmpty()) {
+            throw new RuntimeException("Realm ID is required");
+        }
+
+        try {
+            String query = "Select Id, Name, AccountType, AccountSubType, CurrentBalance, FullyQualifiedName from Account where Active = true";
+            String body = restClient.query(ctx(accessToken, realmId), query);
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode qr = root.path("QueryResponse");
+            List<Map<String, Object>> accounts = new ArrayList<>();
+            if (qr.has("Account") && qr.get("Account").isArray()) {
+                for (JsonNode node : qr.get("Account")) {
+                    Map<String, Object> acct = new HashMap<>();
+                    acct.put("id", node.path("Id").asText());
+                    acct.put("name", node.path("Name").asText());
+                    acct.put("type", node.path("AccountType").asText());
+                    acct.put("subType", node.path("AccountSubType").asText());
+                    acct.put("fullyQualifiedName", node.path("FullyQualifiedName").asText());
+                    acct.put("currentBalance", node.path("CurrentBalance").asDouble(0));
+                    accounts.add(acct);
+                }
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("accounts", accounts);
+            result.put("count", accounts.size());
+            return result;
+        } catch (HttpClientErrorException e) {
+            throw new RuntimeException("Failed to fetch accounts: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to parse accounts response: " + e.getMessage(), e);
         }
     }
     
@@ -177,70 +200,51 @@ public class QuickBooksApiService {
         }
         
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? 
-                accessToken.substring(7) : accessToken;
-            
-            String apiUrl = ensureNoTrailingSlash(config.getBaseUrl()) + "/v3/company/" + realmId + "/query";
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                apiUrl = apiUrl + "?minorversion=" + config.getMinorVersion().trim();
-            }
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + rawToken);
-            headers.set("Accept", "application/json");
-            headers.set("Content-Type", "application/text");
-            
             // Only return items usable on sales transactions (exclude Category)
             String query = "Select Id, Name, Type from Item where Active = true and Type in ('Service','NonInventory','Inventory') MAXRESULTS 25";
-            HttpEntity<String> request = new HttpEntity<>(query, headers);
+            String body = restClient.query(ctx(accessToken, realmId), query);
+            JsonNode responseData = objectMapper.readTree(body);
+            JsonNode queryResponse = responseData.get("QueryResponse");
             
-            ResponseEntity<String> response = exchangeWithRetry(apiUrl, HttpMethod.POST, request);
-            
-            if (response.getStatusCode().is2xxSuccessful()) {
-                JsonNode responseData = objectMapper.readTree(response.getBody());
-                JsonNode queryResponse = responseData.get("QueryResponse");
+            if (queryResponse != null && queryResponse.has("Item")) {
+                JsonNode itemsNode = queryResponse.get("Item");
                 
-                if (queryResponse != null && queryResponse.has("Item")) {
-                    JsonNode itemsNode = queryResponse.get("Item");
-                    
-                    List<String> itemNames = new ArrayList<>();
-                    Map<String, String> itemMap = new HashMap<>();
-                    List<Map<String, Object>> items = new ArrayList<>();
-                    
-                    for (JsonNode itemNode : itemsNode) {
-                        String type = itemNode.has("Type") ? itemNode.get("Type").asText() : null;
-                        if (type != null && "Category".equalsIgnoreCase(type)) {
-                            continue; // skip categories
-                        }
-                        String name = itemNode.get("Name").asText();
-                        String id = itemNode.get("Id").asText();
-                        
-                        itemNames.add(name);
-                        itemMap.put(id, name);
-                        
-                        Map<String, Object> item = new HashMap<>();
-                        item.put("id", id);
-                        item.put("name", name);
-                        items.add(item);
+                List<String> itemNames = new ArrayList<>();
+                Map<String, String> itemMap = new HashMap<>();
+                List<Map<String, Object>> items = new ArrayList<>();
+                
+                for (JsonNode itemNode : itemsNode) {
+                    String type = itemNode.has("Type") ? itemNode.get("Type").asText() : null;
+                    if (type != null && "Category".equalsIgnoreCase(type)) {
+                        continue; // skip categories
                     }
+                    String name = itemNode.get("Name").asText();
+                    String id = itemNode.get("Id").asText();
                     
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("items", items);
-                    result.put("itemNames", itemNames);
-                    result.put("itemMap", itemMap);
+                    itemNames.add(name);
+                    itemMap.put(id, name);
                     
-                    return result;
-                } else {
-                    // No items found - return empty result
-                    Map<String, Object> result = new HashMap<>();
-                    result.put("items", new ArrayList<>());
-                    result.put("itemNames", new ArrayList<>());
-                    result.put("itemMap", new HashMap<>());
-                    return result;
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", id);
+                    item.put("name", name);
+                    item.put("type", type);
+                    items.add(item);
                 }
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("items", items);
+                result.put("itemNames", itemNames);
+                result.put("itemMap", itemMap);
+                
+                return result;
+            } else {
+                // No items found - return empty result
+                Map<String, Object> result = new HashMap<>();
+                result.put("items", new ArrayList<>());
+                result.put("itemNames", new ArrayList<>());
+                result.put("itemMap", new HashMap<>());
+                return result;
             }
-            
-            throw new RuntimeException("Failed to get items: " + response.getBody());
             
         } catch (IOException | RuntimeException e) {
             throw new RuntimeException("Failed to get items: " + e.getMessage(), e);
@@ -273,26 +277,7 @@ public class QuickBooksApiService {
         }
         
         try {
-            // Clean access token
-            String rawToken = accessToken.startsWith("Bearer ") ? 
-                accessToken.substring(7) : accessToken;
-            
-            // Create OAuth2Authorizer with the access token
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            
-            // Create Context for the QuickBooks company
-            // Note: The SDK uses the environment that matches your OAuth token
-            // Make sure your OAuth token was obtained from the same environment (sandbox/production)
-            // as specified in your config: " + config.getEnvironment()
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            
-            // Ensure SDK uses configured minor version (avoid config.xml defaults)
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            
-            // Create DataService to interact with QuickBooks
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
             
             // Resolve Accounting ProjectRef (Customer with IsProject=true).
             // The UI supplies GraphQL ProjectManagement id. We must map it to the accounting
@@ -418,14 +403,6 @@ public class QuickBooksApiService {
     }
 
     /**
-     * Factory method used to create DataService instances.
-     * Kept protected for testability so unit tests can override or spy.
-     */
-    protected DataService createDataService(Context context) {
-        return new DataService(context);
-    }
-
-    /**
      * Generate deep link to view invoice in QuickBooks UI
      * Uses config method for consistency
      */
@@ -455,13 +432,7 @@ public class QuickBooksApiService {
             return null;
         }
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
 
             String safeName = projectName.replace("'", "''");
             StringBuilder q = new StringBuilder("select Id, DisplayName, ParentRef from Customer where IsProject = true and Active = true and DisplayName = '")
@@ -497,13 +468,7 @@ public class QuickBooksApiService {
         }
 
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
 
             Customer customer = new Customer();
             customer.setDisplayName(displayName);
@@ -564,13 +529,6 @@ public class QuickBooksApiService {
         }
 
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-
-            String url = ensureNoTrailingSlash(config.getBaseUrl()) + "/v3/company/" + realmId + "/estimate";
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                url += "?minorversion=" + config.getMinorVersion().trim();
-            }
-
             java.util.Map<String, Object> payload = new java.util.HashMap<>();
             payload.put("TxnDate", java.time.LocalDate.now().toString());
             java.util.Map<String, Object> currency = new java.util.HashMap<>();
@@ -620,18 +578,8 @@ public class QuickBooksApiService {
             lines.add(subTotal);
             payload.put("Line", lines);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + rawToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Accept", "application/json");
-
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(payload), headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Failed to create estimate: " + response.getStatusCode() + " - " + response.getBody());
-            }
-
-            JsonNode root = objectMapper.readTree(response.getBody());
+            String body = restClient.postJson(ctx(accessToken, realmId), "/estimate", payload);
+            JsonNode root = objectMapper.readTree(body);
             JsonNode est = root.path("Estimate");
             if (est.isMissingNode()) {
                 // Some responses nest under top-level; attempt alt path
@@ -681,13 +629,6 @@ public class QuickBooksApiService {
         }
 
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-
-            String url = ensureNoTrailingSlash(config.getBaseUrl()) + "/v3/company/" + realmId + "/salesreceipt";
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                url += "?minorversion=" + config.getMinorVersion().trim();
-            }
-
             java.util.Map<String, Object> payload = new java.util.HashMap<>();
             payload.put("TxnDate", java.time.LocalDate.now().toString());
             java.util.Map<String, Object> currency = new java.util.HashMap<>();
@@ -736,18 +677,8 @@ public class QuickBooksApiService {
             lines.add(subTotal);
             payload.put("Line", lines);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + rawToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Accept", "application/json");
-
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(payload), headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Failed to create sales receipt: " + response.getStatusCode() + " - " + response.getBody());
-            }
-
-            JsonNode root = objectMapper.readTree(response.getBody());
+            String body = restClient.postJson(ctx(accessToken, realmId), "/salesreceipt", payload);
+            JsonNode root = objectMapper.readTree(body);
             JsonNode sr = root.path("SalesReceipt");
             java.util.Map<String, Object> result = new java.util.HashMap<>();
             result.put("salesReceiptId", sr.path("Id").asText(null));
@@ -793,13 +724,6 @@ public class QuickBooksApiService {
         }
 
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-
-            String url = ensureNoTrailingSlash(config.getBaseUrl()) + "/v3/company/" + realmId + "/bill";
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                url += "?minorversion=" + config.getMinorVersion().trim();
-            }
-
             java.util.Map<String, Object> payload = new java.util.HashMap<>();
             payload.put("TxnDate", java.time.LocalDate.now().toString());
 
@@ -830,18 +754,8 @@ public class QuickBooksApiService {
             vendorRef.put("value", vendorId);
             payload.put("VendorRef", vendorRef);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + rawToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Accept", "application/json");
-
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(payload), headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                throw new RuntimeException("Failed to create bill: " + response.getStatusCode() + " - " + response.getBody());
-            }
-
-            JsonNode root = objectMapper.readTree(response.getBody());
+            String body = restClient.postJson(ctx(accessToken, realmId), "/bill", payload);
+            JsonNode root = objectMapper.readTree(body);
             JsonNode bill = root.path("Bill");
             java.util.Map<String, Object> result = new java.util.HashMap<>();
             result.put("billId", bill.path("Id").asText(null));
@@ -876,13 +790,7 @@ public class QuickBooksApiService {
         }
 
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
 
             String incomeAccountId = findIncomeAccountId(dataService);
             if (incomeAccountId == null) {
@@ -943,13 +851,7 @@ public class QuickBooksApiService {
             throw new RuntimeException("Realm ID is required");
         }
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
 
             QueryResult qr = dataService.executeQuery("select Id, DisplayName from Vendor where Active = true");
             java.util.List<java.util.Map<String, Object>> vendors = new java.util.ArrayList<>();
@@ -986,13 +888,7 @@ public class QuickBooksApiService {
             throw new RuntimeException("Realm ID is required");
         }
         try {
-            String rawToken = accessToken.startsWith("Bearer ") ? accessToken.substring(7) : accessToken;
-            OAuth2Authorizer oauth2Authorizer = new OAuth2Authorizer(rawToken);
-            Context context = new Context(oauth2Authorizer, ServiceType.QBO, realmId);
-            if (config.getMinorVersion() != null && !config.getMinorVersion().trim().isEmpty()) {
-                context.setMinorVersion(config.getMinorVersion().trim());
-            }
-            DataService dataService = createDataService(context);
+            DataService dataService = sdkClient.dataService(ctx(accessToken, realmId));
 
             QueryResult qr = dataService.executeQuery("select Id, Name, AccountType from Account where Active = true and AccountType in ('Expense','Cost of Goods Sold')");
             java.util.List<java.util.Map<String, Object>> accounts = new java.util.ArrayList<>();

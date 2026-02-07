@@ -16,6 +16,7 @@ import com.quickbooks.demo.service.QuickBooksApiService;
 import com.quickbooks.demo.service.QuickBooksOAuthService;
 
 import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpServletRequest;
 
 @Controller
 public class QuickBooksController {

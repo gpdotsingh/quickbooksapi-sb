@@ -1,0 +1,29 @@
+query ListProjects($first: PositiveInt!, $after: String, $filter: ProjectManagement_ProjectFilter, $orderBy: [ProjectManagement_OrderBy!]) {
+  projectManagementProjects(first: $first, after: $after, filter: $filter, orderBy: $orderBy) {
+    edges {
+      node {
+        id
+        name
+        description
+        status
+        startDate
+        dueDate
+        priority
+        customer { id }
+        addresses {
+          streetAddressLine1
+          streetAddressLine2
+          streetAddressLine3
+          state
+          postalCode
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+

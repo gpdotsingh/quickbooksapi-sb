@@ -1,0 +1,586 @@
+/* Base styles */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Helvetica', Arial, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+    line-height: 1.6;
+    /* display: flex; */
+    justify-content: center;
+    align-items: center;
+    background-color: #f4f4f4; /* Soft light gray background */
+    min-height: 100vh;
+    font-family: 'Helvetica'
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Flash messages */
+.flash-messages {
+    margin-bottom: 20px;
+}
+
+.flash-message {
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+}
+
+.flash-message.success {
+    background-color: #e8f5e8;
+    color: #2e7d32;
+    border: 1px solid #81c784;
+}
+
+.flash-message.error {
+    background-color: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
+}
+
+/* Subtle inline notice for unmet step requirements */
+.inline-notice {
+    font-size: 0.9rem;
+    color: #c62828;
+    margin-top: 6px;
+}
+
+/* Step container */
+.step-container {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.step-container h2 {
+    margin: 0 0 30px 0;
+    color: #1976d2;
+    text-align: center;
+}
+
+.step {
+    margin-bottom: 30px;
+    padding: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.step h3 {
+    margin: 0 0 15px 0;
+    color: #333;
+    text-align: center;
+}
+
+/* Forms and buttons */
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 16px;
+    font-family: 'Helvetica', sans-serif;
+    font-size: medium;
+    width: 100%; /* Full width for the dropdown */
+    height: 40px; /* Set a fixed height */
+    padding: 8px 10px;
+    text-align: center;
+    border-radius: 5px;
+    border: 2px solid #ccc;
+    background-color: #f9f9f9;
+    color: #333;
+    margin: 0;
+    max-height: 150px; /* Limit the height of the dropdown to avoid overflow */
+    overflow-y: auto;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: #c41e3a;  /* Default app action color (red) */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.action-btn:hover {
+    background-color: #a01830;  /* Darker red on hover */
+    color: white;
+}
+
+/* Variant colors for auto-create buttons */
+.action-btn.customer { background-color: #059669; }
+.action-btn.customer:hover { background-color: #047857; }
+.action-btn.item { background-color: #7c3aed; }
+.action-btn.item:hover { background-color: #5b21b6; }
+
+.action-btn.logout-btn {
+    background-color: #757575;
+    margin-top: 10px;
+}
+
+.action-btn.logout-btn:hover {
+    background-color: #616161;
+}
+
+.submit-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: block;
+    margin: 0 auto;
+}
+
+.logo-img {
+    width: 195px;
+    height: auto;
+}
+
+.project-details {
+    background-color: #e8f5e8;
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid #81c784;
+    margin-top: 20px;
+}
+
+.project-details h3 {
+    margin: 0 0 15px 0;
+    color: #2e7d32;
+}
+
+.project-info {
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.project-info p {
+    margin: 8px 0;
+    padding: 0;
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .step-container {
+        padding: 20px;
+    }
+    
+    .step {
+        padding: 15px;
+    }
+}
+
+/* Horizontal scroll utility with visible modern scrollbar */
+.scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.scroll-x::-webkit-scrollbar { height: 10px; }
+.scroll-x::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 8px; }
+.scroll-x::-webkit-scrollbar-thumb { background: #b0bec5; border-radius: 8px; }
+.scroll-x::-webkit-scrollbar-thumb:hover { background: #90a4ae; }
+/* Firefox */
+.scroll-x { scrollbar-width: thin; scrollbar-color: #b0bec5 #f1f1f1; }
+
+input[name='qbo_connect'] { 
+    color: white; 
+    background-color: #ff4444; 
+    font-size: xx-large; 
+}
+
+input {
+    margin-bottom: 20px;
+}
+
+form div p {
+    font-size: 16px;
+    color: #555; /* Lighter text color */
+    margin: 0;
+    font-family: 'Helvetica'
+}
+
+form {
+    background-color: #fff; /* White background for the form */
+    padding: 20px;
+    border-radius: 10px; /* Rounded corners */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+    width: 100%;
+    max-width: 500px; /* Limit form width */
+    margin: 0 auto 20px auto; /* Center the form */
+    display: flex;
+    flex-direction: column; 
+    align-items: center; /* Center form content */
+    font-family: 'Helvetica'
+}
+
+form div {
+    display: flex;
+    align-items: center; /* Vertically center the label and select */
+    justify-content: center;
+    gap: 10px; /* Space between the label and dropdown */
+    display: flex;
+    flex-direction: column; /* Stack the child elements vertically */
+    gap: 15px; /* Add space between label and input */
+    width: 100%; /* Full width */
+    font-family: 'Helvetica'
+}
+
+input[name='qbo_project'] { 
+    color: white; 
+    background-color: #ff4444; 
+    font-size: xx-large; 
+}
+
+.submit-btn img {
+    display: block; /* Remove extra space below the image */
+    max-width: 100%; /* Ensure image doesn't overflow */
+}
+
+
+
+select option {
+    background-color: white;
+    color: #333;
+    padding: 10px;
+    font-size: medium;
+}
+
+/* Invoice form styling */
+.invoice-form {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    margin-top: 15px;
+}
+
+.invoice-form .form-group {
+    text-align: left;
+    margin-bottom: 15px;
+}
+
+.invoice-form label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 5px;
+}
+
+.invoice-form input[type="number"],
+.invoice-form input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 16px;
+    background-color: white;
+    box-sizing: border-box;
+    margin-bottom: 0;
+}
+
+.invoice-form input[type="number"]:focus,
+.invoice-form input[type="text"]:focus,
+.invoice-form select:focus {
+    outline: none;
+    border-color: #1976d2;
+    box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+}
+
+/* Invoice details styling */
+.invoice-details {
+    background-color: #e3f2fd;
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid #90caf9;
+    margin-top: 20px;
+}
+
+.invoice-details h3 {
+    margin: 0 0 15px 0;
+    color: #1565c0;
+}
+
+.invoice-info {
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.invoice-info p {
+    margin: 8px 0;
+    padding: 0;
+}
+
+/* Deep link styling */
+.deep-link-section {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+    text-align: center;
+}
+
+.deep-link-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #0077c5;
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 16px;
+    transition: background-color 0.3s, transform 0.2s;
+    margin-bottom: 10px;
+}
+
+.deep-link-btn:hover {
+    background-color: #005a9e;
+    transform: translateY(-1px);
+    text-decoration: none;
+    color: white;
+}
+
+.deep-link-info {
+    font-size: 14px;
+    color: #6c757d;
+    margin: 0;
+    font-style: italic;
+}
+
+/* Refresh button variant (blue) */
+.refresh-btn { background-color: #1976d2; }
+.refresh-btn:hover { background-color: #1565c0; }
+
+/* Top actions container centering */
+.top-actions { display: flex; justify-content: center; }
+.top-actions form { width: 100%; max-width: 500px; }
+
+.action-btn.logout-btn {
+    background-color: #757575;
+    margin-top: 10px;
+}
+
+.action-btn.logout-btn:hover {
+    background-color: #616161;
+}
+
+.submit-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: block;
+    margin: 0 auto;
+}
+
+.submit-btn img {
+    display: block;
+    max-width: 100%;
+}
+
+.logo-img {
+    width: 195px;
+    height: auto;
+}
+
+.project-details {
+    background-color: #e8f5e8;
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid #81c784;
+    margin-top: 20px;
+}
+
+.project-details h3 {
+    margin: 0 0 15px 0;
+    color: #2e7d32;
+}
+
+.project-info {
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.project-info p {
+    margin: 8px 0;
+    padding: 0;
+}
+
+/* Form styling */
+form {
+    background-color: #fff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto 20px auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Helvetica';
+}
+
+form div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    width: 100%;
+    font-family: 'Helvetica';
+}
+
+form div p {
+    font-size: 16px;
+    color: #555;
+    margin: 0;
+    font-family: 'Helvetica';
+}
+
+input {
+    margin-bottom: 20px;
+}
+
+input[name='qbo_connect'] {
+    width: 100%;
+    padding: 12px;
+    background-color: #2ca01c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+input[name='qbo_connect']:hover {
+    background-color: #228b15;
+    color: white;
+}
+
+input[name='qbo_project'] {
+    color: white;
+    background-color: #ff4444;
+    font-size: xx-large;
+}
+
+.proj-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.proj-btn:hover {
+    background-color: #1565c0;
+    color: white;
+}
+
+/* Status containers */
+.status-container {
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.status-connected {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.status-disconnected {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.info-panel {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 15px 0;
+    text-align: left;
+}
+
+.info-panel ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.info-panel li {
+    margin: 8px 0;
+}
+
+.info-panel code {
+    background-color: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+/* Prerequisite text styling */
+.step-info .pre-req {
+    color: #c62828;
+    font-weight: 700;
+}
+
+
+
+@media (max-width: 600px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .step-container {
+        padding: 20px;
+    }
+    
+    .step {
+        padding: 15px;
+    }
+}

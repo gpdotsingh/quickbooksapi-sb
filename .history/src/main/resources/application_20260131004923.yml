@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: graphql_services
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+
+quickbooks:
+  client-id: AB7fIQMnlIYDtyz5xRgRgEXnKX5lVZ5MSc2Wr9E8JueYlD9zd0
+  client-secret: Ygk5v9Gw9wnza6lwWjv4fM6HOVqeoUevwTMsOh4k
+  environment: sandbox
+  redirect-uri: http://localhost:8080/oauth2redirect
+  base-url: https://sandbox-quickbooks.api.intuit.com
+  graphql-url: https://qb-sandbox.api.intuit.com/graphql
+  minor-version: 75
+  scopes:
+    - com.intuit.quickbooks.accounting
+logging:
+  level:
+    com.quickbooks.demo: DEBUG
+    org.apache.http: DEBUG

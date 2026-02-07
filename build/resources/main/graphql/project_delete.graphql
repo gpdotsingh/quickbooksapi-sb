@@ -1,0 +1,14 @@
+mutation ProjectManagementDeleteProject($input: ProjectManagement_DeleteProjectInput!) {
+  projectManagementDeleteProject(input: $input) {
+    ... on ProjectManagement_Project {
+      id
+      name
+      version
+      deleted
+    }
+    ... on ProjectManagement_Error {
+      message
+    }
+  }
+}
+
